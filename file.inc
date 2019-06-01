@@ -2,19 +2,19 @@
 ;
 ; Variable declaration
 ;
-LFNPTR		=$c9		; W -pointer to filename (usually $140)
-LLOAD		=$cb		; W - load address
-LEXEC		=$cd		; W - execution address
-LLENGTH		=$cf		; W - byte length
+LFNPTR          =$c9            ; W -pointer to filename (usually $140)
+LLOAD           =$cb            ; W - load address
+LEXEC           =$cd            ; W - execution address
+LLENGTH         =$cf            ; W - byte length
 
-RWPTR		=$ac		; W - data target vector
-NAME		=$140		; sits astride the BASIC input buffer and string processing area.
+RWPTR           =$ac            ; W - data target vector
+NAME            =$140           ; sits astride the BASIC input buffer and string processing area.
 
-IRQVEC		=$204		; we patch these (maybe more ;l)
-COMVEC		=$206
-RDCVEC		=$20a
-LODVEC		=$20c
-SAVVEC		=$20e
+IRQVEC          =$204           ; we patch these (maybe more ;l)
+COMVEC          =$206
+RDCVEC          =$20a
+LODVEC          =$20c
+SAVVEC          =$20e
 
 
 ;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~
@@ -23,9 +23,9 @@ SAVVEC		=$20e
 ;
 ;
 open_file_read:
-   lda #CMD_FILE_OPEN_READ	; Set command open file for reading
-   jsr open_file		; Open file with filename in $140
-   jmp expect64orless		; Check for error
+   lda #CMD_FILE_OPEN_READ      ; Set command open file for reading
+   jsr open_file                ; Open file with filename in $140
+   jmp expect64orless           ; Check for error
 
 
 
@@ -37,28 +37,28 @@ open_file_read:
 ; a = read/write $01 = read, $11 = write
 ;
 open_file:
-   pha				; Save read/write mode
-   jsr send_name		; Send filename to AtoMMC, terminated with 0
-   pla				; Restore read/write mode
-   SLOWCMD 			; Send command and wait until ready
+   pha                          ; Save read/write mode
+   jsr send_name                ; Send filename to AtoMMC, terminated with 0
+   pla                          ; Restore read/write mode
+   SLOWCMD                      ; Send command and wait until ready
    rts
 
 send_name:
-   jsr prepare_write_data	; Prepare to write filename to AtoMMC
+   jsr prepare_write_data       ; Prepare to write filename to AtoMMC
 
-   ldx #0			; Send filename
+   ldx #0                       ; Send filename
    beq @pumpname
 @nextchar:
    writeportFAST AWRITE_DATA_REG
    inx
 @pumpname:
-   lda NAME,x			; Read filename from filename buffer
-   cmp #$0d			; Check for end of string
+   lda NAME,x                   ; Read filename from filename buffer
+   cmp #$0d                     ; Check for end of string
    bne @nextchar
 
-   lda #0			; Terminate the string
+   lda #0                       ; Terminate the string
    writeportFAST AWRITE_DATA_REG
-	jsr interwritedelay
+        jsr interwritedelay
    jmp interwritedelay
 
 
@@ -68,8 +68,8 @@ send_name:
 ; Close a file
 ;
 closefile:
-   SLOWCMDI CMD_FILE_CLOSE	; Close the file 
-   jmp expect64orless		; Check for error
+   SLOWCMDI CMD_FILE_CLOSE      ; Close the file
+   jmp expect64orless           ; Check for error
 
 
 
@@ -81,25 +81,25 @@ closefile:
 ; (RWPTR) points to target
 ;
 read_block:
-   tax				; Save byte counter
+   tax                          ; Save byte counter
 
    ; ask PIC for (A) bytes of data (0=256)
-   writeportFAST ALATCH_REG	; Set ammount to read
+   writeportFAST ALATCH_REG     ; Set ammount to read
    jsr interwritedelay
-   SLOWCMDI CMD_READ_BYTES	; Set command
-    
-   jsr expect64orless		; Check for error
-   jsr prepare_read_data	; Tell pic to release the data we just read
+   SLOWCMDI CMD_READ_BYTES      ; Set command
+
+   jsr expect64orless           ; Check for error
+   jsr prepare_read_data        ; Tell pic to release the data we just read
 
    ; Read data block
    ldy  #0
 @loop:
-   readportFAST	AREAD_DATA_REG	; Then read byte
-;	eor #$ff
-   sta (RWPTR),y		; Store byte in memory
-   iny				; Increment memory pointer
-   dex				; Decrement byte counter
-   bne @loop			; Repeat
+   readportFAST AREAD_DATA_REG  ; Then read byte
+;       eor #$ff
+   sta (RWPTR),y                ; Store byte in memory
+   iny                          ; Increment memory pointer
+   dex                          ; Decrement byte counter
+   bne @loop                    ; Repeat
 
    rts
 
@@ -111,7 +111,7 @@ read_block:
 ; Enough to intersperse 2 writes to the FATPIC.
 ;
 interwritedelay:
-   lda  #8			; Changed for 2Mhz operation
+   lda  #8                      ; Changed for 2Mhz operation
    sec
 @loop:
    sbc #1
@@ -125,19 +125,19 @@ interwritedelay:
 ; Perform slow command initialisation and expect a return code <= 64
 ;
 expect64orless:
-   cmp #STATUS_COMPLETE+1	; Check if command successfull
-   bcs reportDiskFailure	; If not, report error
+   cmp #STATUS_COMPLETE+1       ; Check if command successfull
+   bcs reportDiskFailure        ; If not, report error
    rts
 
 reportDiskFailure:
 ;just mess screen for now.
 
-	pha
-	lda #0
-	sta $b000
-	pla
-	jsr $f802
-	jmp$c2b2
+        pha
+        lda #0
+        sta $b000
+        pla
+        jsr $f802
+        jmp$c2b2
 
 
     ldy #0
@@ -147,7 +147,7 @@ reportDiskFailure:
    iny
    bne @lp
 
-	jmp end_file
+        jmp end_file
 
 
 ;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~
@@ -155,15 +155,14 @@ reportDiskFailure:
 ; Prepare AtoMMC for reading or writing data
 ;
 prepare_read_data:
-   lda 	#CMD_INIT_READ		; Prepare for reading
-   writeportFAST ACMD_REG				
+   lda  #CMD_INIT_READ          ; Prepare for reading
+   writeportFAST ACMD_REG
    jsr interwritedelay
    jmp interwritedelay
 
 
-prepare_write_data: 
-   lda #CMD_INIT_WRITE		; Prepare for writing
-   writeportFAST ACMD_REG 			
+prepare_write_data:
+   lda #CMD_INIT_WRITE          ; Prepare for writing
+   writeportFAST ACMD_REG
    jsr interwritedelay
    jmp interwritedelay
- 
