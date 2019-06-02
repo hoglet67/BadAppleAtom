@@ -25,6 +25,8 @@ name_end:
 ;********************************************************************
 .ENDIF
 
+           .include "atmmc2def.asm"
+
 ;=================================================================
 ;== VARIABLE DECLARATION
 ;=================================================================
@@ -46,7 +48,7 @@ movieframes     = 6570
 
 ; vars
 
-displaymode     = 4
+displaymode     = MODE
 
 .if displaymode = 0
         clearmode       = MODE0
@@ -75,40 +77,18 @@ displaymode     = 4
 bufaddress      = $80
 scraddress      = $82
 
-AREG_BASE       = $b400
-
-ACMD_REG        = AREG_BASE+CMD_REG
-ALATCH_REG      = AREG_BASE+LATCH_REG
-AREAD_DATA_REG  = AREG_BASE+READ_DATA_REG
-AWRITE_DATA_REG = AREG_BASE+WRITE_DATA_REG
-ASTATUS_REG     = AREG_BASE+STATUS_REG
+OSFIND          = $FFCE
+OSSHUT          = $FFCB
 
 ;=================================================================
 ;== Macros
 ;=================================================================
-
-.macro SLOWCMD
-        jsr SLOWCMD_SUB
-.endmacro
-
-.macro writeportFAST port
-        sta port
-.endmacro
 
 .macro SETRWPTR addr
         lda #<addr
         sta RWPTR
         lda #>addr
         sta RWPTR+1
-.endmacro
-
-.macro SLOWCMDI command
-        lda #command
-        SLOWCMD
-.endmacro
-
-.macro readportFAST port
-        lda port
 .endmacro
 
 ;=================================================================
@@ -118,12 +98,8 @@ ASTATUS_REG     = AREG_BASE+STATUS_REG
 exec:
 start_asm:
 
+        jsr atommc3_detect              ; Detect PIC vs AVR AtoMMC
 ; Init
-
-        lda #$40                        ; Set namebuffer to $0140
-        sta LFNPTR
-        lda #$01
-        sta LFNPTR+1
 
         lda #<movieframes               ; Set framecounter
         sta framecounter
@@ -192,20 +168,79 @@ end_file:
         jsr closefile                   ; Close file
 
         rts
+;=================================================================
+handle:
+       .byte 0
+
+;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~
+;
+; Send filename and open file for reading/writing
+;
+; $140 = name
+; a = read/write $01 = read, $11 = write
+;
+
+open_file_read:
+       lda #<NAME                       ; Set namebuffer to $0140
+       sta LFNPTR
+       lda #>NAME
+       sta LFNPTR+1
+       ldx #LFNPTR
+       jsr OSFIND
+       sta handle
+       rts
+
+;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~
+;
+; Close a file
+;
+
+closefile:
+       ldy handle
+       jmp OSSHUT
+
+;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~
+;
+; Read data to memory
+;
+; a = number of bytes to read (0 = 256)
+; (RWPTR) points to target
+;
+read_block:
+       tax				                   ; Save byte counter
+       jsr write_latch_reg              ; ask PIC for (A) bytes of data (0=256)
+       lda handle
+       and #3
+       asl a
+       asl a
+       clc
+       adc #CMD_READ_BYTES
+       jsr slow_cmd 	                   ; Set command
+       cmp #STATUS_COMPLETE+1           ; Check if command successfull
+       bcs reportDiskFailure            ; If not, report error
+       jsr prepare_read_data	          ; Tell pic to release the data we just read
+
+       ; Read data block
+       ldy  #0
+@loop:
+       jsr read_data_reg                ; Then read byte
+;	    eor #$ff
+       sta (RWPTR),y    	             ; Store byte in memory
+       iny				                   ; Increment memory pointer
+       dex				                   ; Decrement byte counter
+       bne @loop			                ; Repeat
+       rts
+
+reportDiskFailure:
+;just mess screen for now.
+       pha
+       lda #0
+       sta $b000
+       pla
+       jsr $f802
+       jmp $c2b2
 
 ;=================================================================
-
-SLOWCMD_SUB:
-        writeportFAST ACMD_REG
-SlowLoop:
-        lda #0
-        sec
-SLOWCMD_DELAY_LOOP:
-        sbc #1
-        bne SLOWCMD_DELAY_LOOP
-        lda ACMD_REG
-        bmi SlowLoop
-        rts
 
 myfilename:     .byte "MOVIE"
 
@@ -225,6 +260,5 @@ myfilename:     .byte "MOVIE"
 framecounter:   .byte 0,0
 noisecounter:   .byte 0
 
-        .include "atmmc2def.asm"
-        .include "file.inc"
+        .include "util.asm"
 end_asm:
