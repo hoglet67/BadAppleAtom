@@ -154,13 +154,14 @@ scrloop2:
         jmp scrloop2
 
 next_scr:
-        dec framecounter
-        beq chk_frame
-        jmp next_frame
-
-chk_frame:
-        dec framecounter+1
-        beq end_file
+        sec
+        lda framecounter
+        sbc #1
+        sta framecounter
+        lda framecounter+1
+        sbc #0
+        sta framecounter+1
+        bcc end_file
         jmp next_frame                  ; Repeat for all frames
 
 end_file:
