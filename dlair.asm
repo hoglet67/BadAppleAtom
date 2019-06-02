@@ -144,9 +144,29 @@ lp2:
 
         ldy #(moviewidth-1)             ; Byte counter
 
+; VSYNC
+;
+; PIC (at any speed) is too slow to run at 30fps
+;
+;              CLEAR 0        CLEAR 2/4
+; AVR @ 1MHz   22.5 FPS (0)   17.0 FPS (0)
+; AVR @ 2MHz   45.0 FPS (1)   32.8 FPS (1)
+; AVR @ 4MHz   85.2 FPS (2)   58.1 FPS (1)
+
+
+        bit atommc3_type                ; Test the AtoMMC type
+        bmi vsync_0                     ; PIC? skip all vsync
         lda SystemSpeed                 ; Set by InitVIA, 0=1MHz, 1=2MHz, 2=4MHz
-        beq scrloop2                    ; Skip VSYNC at 1MHz
+        beq vsync_0                     ; AVR at 1MHz is too slow to run at 30fps
+.if displaymode = 0
+        cmp #2
+.endif
+        bne vsync_1
+vsync_2:
         jsr $fe66                       ; Wait for VSYNC
+vsync_1:
+        jsr $fe66                       ; Wait for VSYNC
+vsync_0:
 
 scrloop2:
 
