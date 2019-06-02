@@ -129,8 +129,7 @@ lp2:
         txa
         pha
 
-        lda #0                          ; Load 256 bytes
-        jsr read_block
+        jsr read_block_256
 
         inc RWPTR+1                     ; Point to next block
 
@@ -206,8 +205,9 @@ closefile:
 ; a = number of bytes to read (0 = 256)
 ; (RWPTR) points to target
 ;
-read_block:
-       tax				                   ; Save byte counter
+read_block_256:
+     ; tax				                   ; Save byte counter
+       lda #0
        jsr write_latch_reg              ; ask PIC for (A) bytes of data (0=256)
        lda handle
        and #3
@@ -222,14 +222,33 @@ read_block:
 
        ; Read data block
        ldy  #0
-@loop:
-       jsr read_data_reg                ; Then read byte
-;	    eor #$ff
+
+       bit atommc3_type
+       bmi read_block_pic
+
+read_block_avr:
+
+     ; lda ASTATUS_REG                  ; Read status reg
+     ; and #MMC_MCU_WROTE               ; Been written yet ?
+     ; beq read_block_avr               ; nope keep waiting
+
+       LDA AREAD_DATA_REG               ; Then read byte
        sta (RWPTR),y    	             ; Store byte in memory
        iny				                   ; Increment memory pointer
-       dex				                   ; Decrement byte counter
-       bne @loop			                ; Repeat
+     ; dex				                   ; Decrement byte counter
+       bne read_block_avr               ; Repeat
        rts
+
+read_block_pic:
+
+       ;; some delay will be needed at 2MHz here??
+       LDA AREAD_DATA_REG
+       sta (RWPTR),y    	             ; Store byte in memory
+       iny				                   ; Increment memory pointer
+     ; dex				                   ; Decrement byte counter
+       bne read_block_pic               ; Repeat
+       rts
+
 
 reportDiskFailure:
 ;just mess screen for now.
