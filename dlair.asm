@@ -99,6 +99,7 @@ exec:
 start_asm:
 
         jsr atommc3_detect              ; Detect PIC vs AVR AtoMMC
+        jsr InitVIA                     ; setup VIA correctly for 1/2/4MHz operation
 ; Init
 
         lda #<movieframes               ; Set framecounter
@@ -142,6 +143,12 @@ lp2:
 ; Display 1 frame on screen
 
         ldy #(moviewidth-1)             ; Byte counter
+
+        lda SystemSpeed                 ; Set by InitVIA
+        cmp #2                          ; 4MHz?
+        bne scrloop2                    ; No, the skip waiting for VSYNC
+        jsr $fe66                       ; Syncronise to VSYNC
+
 scrloop2:
 
 .repeat 96,cnt                          ; Display column
@@ -166,8 +173,11 @@ next_scr:
 
 end_file:
         jsr closefile                   ; Close file
+        jsr ResetVIA                    ; Disable VIA interrupts and restore the vector
 
-        rts
+        lda #12
+        jmp OSWRCH
+
 ;=================================================================
 handle:
        .byte 0
@@ -286,4 +296,8 @@ framecounter:   .byte 0,0
 noisecounter:   .byte 0
 
         .include "util.asm"
+
+
+        .include "via.asm"
+
 end_asm:
