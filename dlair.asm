@@ -228,9 +228,9 @@ read_block_256:
 
 read_block_avr:
 
-     ; lda ASTATUS_REG                  ; Read status reg
-     ; and #MMC_MCU_WROTE               ; Been written yet ?
-     ; beq read_block_avr               ; nope keep waiting
+       lda #MMC_MCU_WROTE               ; Read status reg
+       bit ASTATUS_REG                  ; Been written yet ?
+       beq read_block_avr               ; nope keep waiting
 
        LDA AREAD_DATA_REG               ; Then read byte
        sta (RWPTR),y    	             ; Store byte in memory
@@ -241,7 +241,13 @@ read_block_avr:
 
 read_block_pic:
 
-       ;; some delay will be needed at 2MHz here??
+       ;; delay is needed at 2MHz (and less than 6 NOPs crashes)
+       NOP
+       NOP
+       NOP
+       NOP
+       NOP
+       NOP
        LDA AREAD_DATA_REG
        sta (RWPTR),y    	             ; Store byte in memory
        iny				                   ; Increment memory pointer
