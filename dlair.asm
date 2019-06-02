@@ -181,14 +181,14 @@ handle:
 ;
 
 open_file_read:
-       lda #<NAME                       ; Set namebuffer to $0140
-       sta LFNPTR
-       lda #>NAME
-       sta LFNPTR+1
-       ldx #LFNPTR
-       jsr OSFIND
-       sta handle
-       rts
+        lda #<NAME                      ; Set namebuffer to $0140
+        sta LFNPTR
+        lda #>NAME
+        sta LFNPTR+1
+        ldx #LFNPTR
+        jsr OSFIND
+        sta handle
+        rts
 
 ;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~
 ;
@@ -196,8 +196,8 @@ open_file_read:
 ;
 
 closefile:
-       ldy handle
-       jmp OSSHUT
+        ldy handle
+        jmp OSSHUT
 
 ;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~;~~
 ;
@@ -207,64 +207,63 @@ closefile:
 ; (RWPTR) points to target
 ;
 read_block_256:
-     ; tax				                   ; Save byte counter
-       lda #0
-       jsr write_latch_reg              ; ask PIC for (A) bytes of data (0=256)
-       lda handle
-       and #3
-       asl a
-       asl a
-       clc
-       adc #CMD_READ_BYTES
-       jsr slow_cmd 	                   ; Set command
-       cmp #STATUS_COMPLETE+1           ; Check if command successfull
-       bcs reportDiskFailure            ; If not, report error
-       jsr prepare_read_data	          ; Tell pic to release the data we just read
+      ; tax                             ; Save byte counter
+        lda #0
+        jsr write_latch_reg             ; ask PIC for (A) bytes of data (0=256)
+        lda handle
+        and #3
+        asl a
+        asl a
+        clc
+        adc #CMD_READ_BYTES
+        jsr slow_cmd                    ; Set command
+        cmp #STATUS_COMPLETE+1          ; Check if command successfull
+        bcs reportDiskFailure           ; If not, report error
+        jsr prepare_read_data           ; Tell pic to release the data we just read
 
-       ; Read data block
-       ldy  #0
+        ; Read data block
+        ldy  #0
 
-       bit atommc3_type
-       bmi read_block_pic
+        bit atommc3_type
+        bmi read_block_pic
 
 read_block_avr:
 
-       lda #MMC_MCU_WROTE               ; Read status reg
-       bit ASTATUS_REG                  ; Been written yet ?
-       beq read_block_avr               ; nope keep waiting
+        lda #MMC_MCU_WROTE              ; Read status reg
+        bit ASTATUS_REG                 ; Been written yet ?
+        beq read_block_avr              ; nope keep waiting
 
-       LDA AREAD_DATA_REG               ; Then read byte
-       sta (RWPTR),y    	             ; Store byte in memory
-       iny				                   ; Increment memory pointer
-     ; dex				                   ; Decrement byte counter
-       bne read_block_avr               ; Repeat
-       rts
+        LDA AREAD_DATA_REG              ; Then read byte
+        sta (RWPTR),y                   ; Store byte in memory
+        iny                             ; Increment memory pointer
+      ; dex                             ; Decrement byte counter
+        bne read_block_avr              ; Repeat
+        rts
 
 read_block_pic:
 
-       ;; delay is needed at 2MHz (and less than 6 NOPs crashes)
-       NOP
-       NOP
-       NOP
-       NOP
-       NOP
-       NOP
-       LDA AREAD_DATA_REG
-       sta (RWPTR),y    	             ; Store byte in memory
-       iny				                   ; Increment memory pointer
-     ; dex				                   ; Decrement byte counter
-       bne read_block_pic               ; Repeat
-       rts
-
+        ;; delay is needed at 2MHz (and less than 6 NOPs crashes)
+        NOP
+        NOP
+        NOP
+        NOP
+        NOP
+        NOP
+        LDA AREAD_DATA_REG
+        sta (RWPTR),y                   ; Store byte in memory
+        iny                             ; Increment memory pointer
+      ; dex                             ; Decrement byte counter
+        bne read_block_pic              ; Repeat
+        rts
 
 reportDiskFailure:
 ;just mess screen for now.
-       pha
-       lda #0
-       sta $b000
-       pla
-       jsr $f802
-       jmp $c2b2
+        pha
+        lda #0
+        sta $b000
+        pla
+        jsr $f802
+        jmp $c2b2
 
 ;=================================================================
 
