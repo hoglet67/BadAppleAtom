@@ -144,10 +144,9 @@ lp2:
 
         ldy #(moviewidth-1)             ; Byte counter
 
-        lda SystemSpeed                 ; Set by InitVIA
-        cmp #2                          ; 4MHz?
-        bne scrloop2                    ; No, the skip waiting for VSYNC
-        jsr $fe66                       ; Syncronise to VSYNC
+        lda SystemSpeed                 ; Set by InitVIA, 0=1MHz, 1=2MHz, 2=4MHz
+        beq scrloop2                    ; Skip VSYNC at 1MHz
+        jsr $fe66                       ; Wait for VSYNC
 
 scrloop2:
 
@@ -196,6 +195,7 @@ open_file_read:
         lda #>NAME
         sta LFNPTR+1
         ldx #LFNPTR
+        sec                             ; Use file for input
         jsr OSFIND
         sta handle
         rts
