@@ -109,10 +109,8 @@ ISRCounterMask:
 TimerISR:
         lda ViaT1CounterL
 
+        inc ISRCounter
         lda ISRCounter
-        clc
-        adc #1
-        sta ISRCounter
         and ISRCounterMask
         bne TimerISRExit
 
