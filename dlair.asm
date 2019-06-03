@@ -55,7 +55,7 @@ displaymode     = MODE
         scrwindow       = $8000
         screenwidth     = 32
         moviewidth      = 32
-        movieheight     = 96            ; this should be 16, but it runs way too fast!
+        movieheight     = 16
         blockloads      = 2
         buffer          = $4000
         bufferend       = $4200
@@ -155,13 +155,14 @@ lp1:
         sta GODIL_MODE_EXT
 .endif
 
-next_frame:
 
-.if doublebuffer = 1
-        lda GODIL_MODE_EXT
-        eor #$30
-        sta GODIL_MODE_EXT
-.endif
+        lda ViaT1CounterH
+        sta last_vsync_time
+        lda ISRCounter
+        sta last_vsync_time + 1
+
+
+next_frame:
 
 .if compressed = 1
         jsr read_frame_compressed
@@ -169,30 +170,13 @@ next_frame:
         jsr read_frame_uncompressed
 .endif
 
-; Display 1 frame on screen
+        jsr adaptive_vsync              ; cap rate to 30 FPS
 
-; VSYNC
-;
-; PIC (at any speed) is too slow to run at 30fps
-;
-;              CLEAR 0        CLEAR 2/4      CLEAR 4 GS
-; AVR @ 1MHz   22.5 FPS (0)   17.0 FPS (0)
-; AVR @ 2MHz   45.0 FPS (1)   32.8 FPS (1)
-; AVR @ 4MHz   85.2 FPS (2)   58.1 FPS (1)
-
-        bit atommc3_type                ; Test the AtoMMC type
-        bmi vsync_0                     ; PIC? skip all vsync
-        lda SystemSpeed                 ; Set by InitVIA, 0=1MHz, 1=2MHz, 2=4MHz, 3=8MHz
-        beq vsync_0                     ; AVR at 1MHz is too slow to run at 30fps
-.if displaymode = 0
-        cmp #2
+.if doublebuffer = 1
+        lda GODIL_MODE_EXT
+        eor #$30
+        sta GODIL_MODE_EXT
 .endif
-        bne vsync_1
-vsync_2:
-        jsr $fe66                       ; Wait for VSYNC
-vsync_1:
-        jsr $fe66                       ; Wait for VSYNC
-vsync_0:
 
 .if (buffer <> scrwindow)
 
@@ -231,6 +215,10 @@ end_file:
 
         lda #12
         jmp OSWRCH
+
+;=================================================================
+
+        .include "via.asm"
 
 ;=================================================================
 
@@ -295,6 +283,105 @@ read_frame_compressed:
         beq @loop1
 @done:
         rts
+
+
+
+;=================================================================
+; Adaptive VSYNC
+;
+; Attempts to pace the play back at 30 FPS.
+;
+; while (1) {
+;   t = <now> - <last_vsync_time>
+;   if (t > 30ms) {
+;      break;
+;   }
+;   JSR $FE66
+; }
+; last_vsync_time = <now>
+;
+; The hard part is using T1 (the SID timer) plus an extension counter
+; to actually work out the time, as the counter rate depends on the
+; Atom clock speed.
+;
+; TODO - somehow read ViaT1CounterH and ISRCounter atomically
+
+adaptive_vsync:
+        lda ViaT1CounterH               ; Read the MSB of the VIA T1 Counter
+        sta now_time
+        lda ISRCounter                  ; And the extension counter incremented by the ISR
+        sta now_time + 1
+
+        lda #0
+        sta delta_time + 1
+        lda last_vsync_time
+        sec
+        sbc now_time
+        bcs no_wrap
+        dec delta_time + 1              ; -1 equates to a borrow in the next phase
+no_wrap:
+        sta delta_time
+
+        ldx SystemSpeed                 ; 0=1MHz, 1=2MHz, 2=4MHz, 4=8MHz
+        ldy now_time + 1
+wraps_loop:
+        cpy last_vsync_time + 1         ; for each increment of the ISR counter
+        beq wraps_loop_done
+        dey
+        lda delta_time
+        clc
+        adc TimerHi, X                  ; add time equivalent to the period of T1
+        sta delta_time
+        bcc wraps_loop
+        inc delta_time + 1
+        jmp wraps_loop
+wraps_loop_done:
+
+; At this point delta_time is a 16-bit binary in units of 256 clock cycles
+;
+; Normalize it to units ot 32us by multiplying as follows:
+;       1MHz (X=0) multiply by 8
+;       2MHz (X=1) multiply by 4
+;       4MHz (X=2) multiply by 2
+;       8MHz (X=3) multiply by 1
+
+normalize_loop:
+        cpx #3
+        bcs normalize_done
+        asl delta_time
+        rol delta_time + 1
+        inx
+        bne normalize_loop
+normalize_done:
+
+; At this point delta_time is a 16-bit binary in units of 32us
+;
+; Compare with 30ms to decide how to proceed
+        sec
+        lda delta_time                  ; this is a standard 16-bit unsigned compare
+        sbc #<(30000/32)
+        lda delta_time + 1
+        sbc #>(30000/32)
+        bcs vsync_exit                  ; branch if greater than 30ms
+
+        jsr $fe66                       ; wait for another vsync
+        jmp adaptive_vsync              ; loop back
+
+vsync_exit:
+        lda ViaT1CounterH               ; record <now> for next time vsync is called
+        sta last_vsync_time
+        lda ISRCounter
+        sta last_vsync_time + 1
+        rts
+
+delta_time:
+       .byte 0, 0
+
+now_time:
+       .byte 0, 0
+
+last_vsync_time:
+       .byte 0, 0
 
 ;=================================================================
 
@@ -425,6 +512,5 @@ framecounter:   .byte 0,0
         .include "util.asm"
 
 
-        .include "via.asm"
 
 end_asm:
