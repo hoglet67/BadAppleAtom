@@ -1,11 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <limits.h>
 
-#define CHUNK 6144
-
-int main(){
+int main(int argc, char *argv[]){
   int c;
+
+  int chunk = 6144;
+  int max_frames = INT_MAX;
+
+  if (argc > 1) {
+     chunk = atoi(argv[1]);
+  }
+
+  if (argc > 2) {
+     max_frames = atoi(argv[2]);
+  }
+
+  fprintf(stderr, "chunk size = %d\n", chunk);
+  fprintf(stderr, "max_frames = %d\n", max_frames);
+
 
   int total_length = 0;
   int frame_length = 0;
@@ -17,10 +31,10 @@ int main(){
 
   int total_run = 0;
   int run = 0;
-  while ( (c=getchar()) != EOF ) {
+  while ( (c=getchar()) != EOF && num_frames < max_frames ) {
 
-     int start_of_frame = (num_chars % CHUNK) == 0;
-     int end_of_frame = (num_chars % CHUNK) == (CHUNK - 1);
+     int start_of_frame = (num_chars % chunk) == 0;
+     int end_of_frame = (num_chars % chunk) == (chunk - 1);
 
      if (start_of_frame) {
         run = 1;
