@@ -3,7 +3,7 @@
 SRC=dlair
 
 
-for mode in 0 2 4
+for mode in 0 2 4 6
 do
     PROG=PLAYER${mode}
 

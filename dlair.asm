@@ -55,11 +55,12 @@ displaymode     = MODE
         scrwindow       = $8000
         screenwidth     = 32
         moviewidth      = 32
-        movieheight     = 16
+        movieheight     = 96            ; this should be 16, but it runs way too fast!
         blockloads      = 2
         buffer          = $4000
         bufferend       = $4200
         compressed      = 0
+        doublebuffer    = 0
 .endif
 
 .if displaymode = 2
@@ -72,23 +73,39 @@ displaymode     = MODE
         buffer          = $4000
         bufferend       = $4600
         compressed      = 0
+        doublebuffer    = 0
 .endif
 
 .if displaymode = 4
+        clearmode       = MODE4
+        scrwindow       = $8a08
+        screenwidth     = 32
+        moviewidth      = 16
+        movieheight     = 96
+        blockloads      = 6
+        buffer          = $4000
+        bufferend       = $4600
+        compressed      = 0
+        doublebuffer    = 0
+.endif
+
+.if displaymode = 6
         clearmode       = MODE4
         scrwindow       = $8000
         screenwidth     = 32
         moviewidth      = 32
         movieheight     = 192
         blockloads      = 24
-        buffer          = $4000
-        bufferend       = $5800
+        buffer          = $8000
+        bufferend       = $9800
         compressed      = 1
+        doublebuffer    = 1
 .endif
 
 bufptr          = $80
 OSFIND          = $FFCE
 OSSHUT          = $FFCB
+GODIL_MODE_EXT  = $BDE0
 
 ;=================================================================
 ;== Macros
@@ -133,7 +150,19 @@ lp1:
 
 ; Start loading 1 frame in buffer
 
+.if doublebuffer = 1
+        lda #$20
+        sta GODIL_MODE_EXT
+.endif
+
 next_frame:
+
+.if doublebuffer = 1
+        lda GODIL_MODE_EXT
+        eor #$30
+        sta GODIL_MODE_EXT
+.endif
+
 .if compressed = 1
         jsr read_frame_compressed
 .else
@@ -142,20 +171,18 @@ next_frame:
 
 ; Display 1 frame on screen
 
-        ldy #(moviewidth-1)             ; Byte counter
-
 ; VSYNC
 ;
 ; PIC (at any speed) is too slow to run at 30fps
 ;
-;              CLEAR 0        CLEAR 2/4
+;              CLEAR 0        CLEAR 2/4      CLEAR 4 GS
 ; AVR @ 1MHz   22.5 FPS (0)   17.0 FPS (0)
 ; AVR @ 2MHz   45.0 FPS (1)   32.8 FPS (1)
 ; AVR @ 4MHz   85.2 FPS (2)   58.1 FPS (1)
 
         bit atommc3_type                ; Test the AtoMMC type
         bmi vsync_0                     ; PIC? skip all vsync
-        lda SystemSpeed                 ; Set by InitVIA, 0=1MHz, 1=2MHz, 2=4MHz
+        lda SystemSpeed                 ; Set by InitVIA, 0=1MHz, 1=2MHz, 2=4MHz, 3=8MHz
         beq vsync_0                     ; AVR at 1MHz is too slow to run at 30fps
 .if displaymode = 0
         cmp #2
@@ -167,16 +194,20 @@ vsync_1:
         jsr $fe66                       ; Wait for VSYNC
 vsync_0:
 
+.if (buffer <> scrwindow)
+
+        ldy #(moviewidth-1)             ; Byte counter
 scrloop2:
 
 .repeat movieheight,cnt                 ; Display column
         lda buffer+cnt*moviewidth,y
         sta scrwindow+cnt*screenwidth,y
 .endrep
-
         dey
         bmi next_scr
         jmp scrloop2
+
+.endif
 
 next_scr:
         sec
@@ -192,6 +223,11 @@ next_scr:
 end_file:
         jsr closefile                   ; Close file
         jsr ResetVIA                    ; Disable VIA interrupts and restore the vector
+
+.if doublebuffer = 1
+        lda #0
+        sta GODIL_MODE_EXT
+.endif
 
         lda #12
         jmp OSWRCH
@@ -372,6 +408,10 @@ myfilename:     .byte "MOVIE"
 .endif
 
 .if displaymode=4
+        .byte "2"
+.endif
+
+.if displaymode=6
         .byte "4"
 .endif
 
