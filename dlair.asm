@@ -43,7 +43,7 @@ MODE3           = $b0
 MODE4Colour     = $d0
 MODE4           = $f0
 
-buffer          = $4000
+cbuffer         = $6000
 movieframes     = 6570
 
 ; vars
@@ -55,7 +55,11 @@ displaymode     = MODE
         scrwindow       = $8000
         screenwidth     = 32
         moviewidth      = 32
+        movieheight     = 16
         blockloads      = 2
+        buffer          = $4000
+        bufferend       = $4200
+        compressed      = 0
 .endif
 
 .if displaymode = 2
@@ -63,20 +67,26 @@ displaymode     = MODE
         scrwindow       = $8000
         screenwidth     = 16
         moviewidth      = 16
+        movieheight     = 96
         blockloads      = 6
+        buffer          = $4000
+        bufferend       = $4600
+        compressed      = 0
 .endif
 
 .if displaymode = 4
         clearmode       = MODE4
-        scrwindow       = $8a08
+        scrwindow       = $8000
         screenwidth     = 32
-        moviewidth      = 16
-        blockloads      = 6
+        moviewidth      = 32
+        movieheight     = 192
+        blockloads      = 24
+        buffer          = $4000
+        bufferend       = $5800
+        compressed      = 1
 .endif
 
-bufaddress      = $80
-scraddress      = $82
-
+bufptr          = $80
 OSFIND          = $FFCE
 OSSHUT          = $FFCB
 
@@ -124,21 +134,11 @@ lp1:
 ; Start loading 1 frame in buffer
 
 next_frame:
-        SETRWPTR $4000                  ; Set databuffer pointer
-        ldx #blockloads                 ; Load 6 blocks
-lp2:
-        txa
-        pha
-
-        jsr read_block_256
-
-        inc RWPTR+1                     ; Point to next block
-
-        pla
-        tax
-
-        dex
-        bne lp2                         ; Repeat for all blocks
+.if compressed = 1
+        jsr read_frame_compressed
+.else
+        jsr read_frame_uncompressed
+.endif
 
 ; Display 1 frame on screen
 
@@ -152,7 +152,6 @@ lp2:
 ; AVR @ 1MHz   22.5 FPS (0)   17.0 FPS (0)
 ; AVR @ 2MHz   45.0 FPS (1)   32.8 FPS (1)
 ; AVR @ 4MHz   85.2 FPS (2)   58.1 FPS (1)
-
 
         bit atommc3_type                ; Test the AtoMMC type
         bmi vsync_0                     ; PIC? skip all vsync
@@ -170,7 +169,7 @@ vsync_0:
 
 scrloop2:
 
-.repeat 96,cnt                          ; Display column
+.repeat movieheight,cnt                 ; Display column
         lda buffer+cnt*moviewidth,y
         sta scrwindow+cnt*screenwidth,y
 .endrep
@@ -198,6 +197,71 @@ end_file:
         jmp OSWRCH
 
 ;=================================================================
+
+read_frame_uncompressed:
+
+        SETRWPTR buffer                 ; Set databuffer pointer
+        ldx #blockloads                 ; Load 6 blocks
+@loop:
+        txa
+        pha
+
+        jsr read_block_256
+
+        inc RWPTR+1                     ; Point to next block
+
+        pla
+        tax
+
+        dex
+        bne @loop                       ; Repeat for all blocks
+
+        rts
+
+;=================================================================
+
+read_frame_compressed:
+
+        SETRWPTR cbuffer                ; Set databuffer pointer
+        lda #<buffer
+        sta bufptr
+        lda #>buffer
+        sta bufptr + 1
+
+@loop1:
+        jsr read_block_256
+
+        ldx #0
+
+@loop2:
+        lda cbuffer, x                  ; <value>
+        inx
+        ldy cbuffer, x                  ; <run length>
+        beq @done                       ; if 0, then terminate
+
+@loop3:
+        dey
+        sta (bufptr), y
+        bne @loop3
+
+        lda cbuffer, x                  ; <run length>
+        clc
+        adc bufptr
+        sta bufptr
+        bcc @next
+        inc bufptr + 1
+        lda bufptr + 1
+        cmp #>bufferend
+        beq @done
+@next:
+        inx
+        bne @loop2
+        beq @loop1
+@done:
+        rts
+
+;=================================================================
+
 handle:
        .byte 0
 
@@ -308,12 +372,15 @@ myfilename:     .byte "MOVIE"
 .endif
 
 .if displaymode=4
-        .byte "2"
+        .byte "4"
 .endif
 
+.if compressed=1
+        .byte "C"
+.endif
         .byte 13
+
 framecounter:   .byte 0,0
-noisecounter:   .byte 0
 
         .include "util.asm"
 
