@@ -214,7 +214,27 @@ end_file:
 .endif
 
         lda #12
-        jmp OSWRCH
+        jsr OSWRCH
+
+        ldx #0
+vsync_stats_loop:
+        txa
+        lsr a
+        clc
+        adc #'0'
+        jsr OSWRCH
+        lda #':'
+        jsr OSWRCH
+        lda vsync_stats + 1, x
+        jsr $f802
+        lda vsync_stats, x
+        jsr $f802
+        jsr OSCRLF
+        inx
+        inx
+        cpx #$10
+        bne vsync_stats_loop
+        rts
 
 ;=================================================================
 
@@ -307,6 +327,12 @@ read_frame_compressed:
 ; TODO - somehow read ViaT1CounterH and ISRCounter atomically
 
 adaptive_vsync:
+
+        lda #0
+        sta vsync_count
+
+adaptive_vsync_loop:
+
         lda ViaT1CounterH               ; Read the MSB of the VIA T1 Counter
         sta now_time
         lda ISRCounter                  ; And the extension counter incremented by the ISR
@@ -365,13 +391,24 @@ normalize_done:
         bcs vsync_exit                  ; branch if greater than 30ms
 
         jsr $fe66                       ; wait for another vsync
-        jmp adaptive_vsync              ; loop back
+        inc vsync_count
+
+        jmp adaptive_vsync_loop         ; loop back
 
 vsync_exit:
         lda ViaT1CounterH               ; record <now> for next time vsync is called
         sta last_vsync_time
         lda ISRCounter
         sta last_vsync_time + 1
+
+        lda vsync_count
+        and #7
+        asl a
+        tax
+        inc vsync_stats, x
+        bne vsync_exit1
+        inc vsync_stats + 1, x
+vsync_exit1:
         rts
 
 delta_time:
@@ -382,6 +419,19 @@ now_time:
 
 last_vsync_time:
        .byte 0, 0
+
+vsync_count:
+       .byte 0
+
+vsync_stats:
+       .word 0 ; 0 VSYNC needed - took more than 2 VSYNCs to generate frame
+       .word 0 ; 1 VSYNC needed
+       .word 0 ; 2 VSYNC needed
+       .word 0 ; 3 VSYNC needed - should never happen
+       .word 0 ; etc
+       .word 0
+       .word 0
+       .word 0
 
 ;=================================================================
 
