@@ -466,9 +466,9 @@ normalize_done:
 ; Compare with 30ms to decide how to proceed
         sec
         lda delta_time                  ; this is a standard 16-bit unsigned compare
-        sbc #<(30000/32)
+        sbc #<(32000/32)
         lda delta_time + 1
-        sbc #>(30000/32)
+        sbc #>(32000/32)
         bcs vsync_exit                  ; branch if greater than 30ms
 
         jsr $fe66                       ; wait for another vsync
