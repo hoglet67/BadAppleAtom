@@ -43,8 +43,8 @@ int main(int argc, char *argv[]){
         run++;
      } else {
         // output last, run
-        putchar(last);
         putchar(run);
+        putchar(last);
         frame_length += 2;
         total_run += run;
         last = c;
@@ -53,8 +53,8 @@ int main(int argc, char *argv[]){
 
      if (end_of_frame) {
         // output last, run
-        putchar(last);
         putchar(run);
+        putchar(last);
         frame_length += 2;
         total_run += run;
 

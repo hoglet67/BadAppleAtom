@@ -109,6 +109,7 @@ displaymode     = MODE
 .endif
 
 bufptr          = $80
+tmpy            = $82
 OSFIND          = $FFCE
 OSSHUT          = $FFCB
 GODIL_MODE_EXT  = $BDE0
@@ -178,7 +179,13 @@ next_frame:
 .endif
 
 .if compressed = 1
-        jsr read_frame_compressed
+        bit atommc3_type
+        bpl @avr
+        jsr read_frame_compressed       ; AtoMMC => cbuffer => display (AVR or PIC)
+        jmp @next
+@avr:
+        jsr stream_frame_compressed     ; AtoMMC => display (AVR only)
+@next:
 .else
         jsr read_frame_uncompressed
 .endif
@@ -288,36 +295,38 @@ read_frame_uncompressed:
 read_frame_compressed:
 
         SETRWPTR cbuffer                ; Set databuffer pointer
-        lda #<buffer
-        sta bufptr
+
+        lda #<buffer                    ; Self modifying code
+        sta @store + 1
         lda #>buffer
-        sta bufptr + 1
+        sta @store + 2
 
 @loop1:
         jsr read_block_256
 
         ldx #0
-
+        clc
 @loop2:
-        lda cbuffer, x                  ; <value>
-        inx
         ldy cbuffer, x                  ; <run length>
-        beq @done                       ; if 0, then terminate
+        sty tmpy
+        inx
+        lda cbuffer, x                  ; <value>
 
 @loop3:
         dey
-        sta (bufptr), y
+@store:
+        sta buffer, y
         bne @loop3
 
-        lda cbuffer, x                  ; <run length>
-        clc
-        adc bufptr
-        sta bufptr
+        ;clc                            ; careful inspection shows C is always clear
+        lda tmpy                        ; <run length>
+        adc @store + 1
+        sta @store + 1
         bcc @next
-        inc bufptr + 1
-        lda bufptr + 1
+        inc @store + 2
+        lda @store + 2
         cmp #>bufferend
-        beq @done
+        bcs @done
 @next:
         inx
         bne @loop2
@@ -325,7 +334,58 @@ read_frame_compressed:
 @done:
         rts
 
+;=================================================================
 
+stream_frame_compressed:
+
+        lda #<buffer                    ; Self modifying code
+        sta @store + 1
+        lda #>buffer
+        sta @store + 2
+
+@loop1:
+        jsr prepare_read_block_256
+
+        ldx #$80
+        clc
+@loop2:
+
+        ; Ignore handshake for speed; no delay actually needed
+        ldy AREAD_DATA_REG              ; <run length>
+        sty tmpy
+
+        ; Ignore handshake for speed; fixed delay of 16 cycles needed @ 8MHz
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        nop
+        lda AREAD_DATA_REG              ; <value>
+
+@loop3:
+        dey
+@store:
+        sta buffer, y
+        bne @loop3
+
+        ;clc                            ; careful inspection shows C is always clear
+        lda tmpy
+        adc @store + 1
+        sta @store + 1
+        bcc @next
+        inc @store + 2
+        lda @store + 2
+        cmp #>bufferend
+        bcs @done
+@next:
+        dex
+        bne @loop2
+        beq @loop1
+@done:
+        rts
 
 ;=================================================================
 ; Adaptive VSYNC
@@ -494,7 +554,7 @@ closefile:
 ; a = number of bytes to read (0 = 256)
 ; (RWPTR) points to target
 ;
-read_block_256:
+prepare_read_block_256:
       ; tax                             ; Save byte counter
         lda #0
         jsr write_latch_reg             ; ask PIC for (A) bytes of data (0=256)
@@ -507,7 +567,11 @@ read_block_256:
         jsr slow_cmd                    ; Set command
         cmp #STATUS_COMPLETE+1          ; Check if command successfull
         bcs reportDiskFailure           ; If not, report error
-        jsr prepare_read_data           ; Tell pic to release the data we just read
+        jmp prepare_read_data           ; Tell pic to release the data we just read
+
+read_block_256:
+
+        jsr prepare_read_block_256
 
         ; Read data block
         ldy  #0
