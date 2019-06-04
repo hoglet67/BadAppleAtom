@@ -179,13 +179,8 @@ next_frame:
 .endif
 
 .if compressed = 1
-        bit atommc3_type
-        bpl @avr
-        jsr read_frame_compressed       ; AtoMMC => cbuffer => display (AVR or PIC)
-        jmp @next
-@avr:
-        jsr stream_frame_compressed     ; AtoMMC => display (AVR only)
-@next:
+;       jsr read_frame_compressed       ; AtoMMC => cbuffer => display
+        jsr stream_frame_compressed     ; AtoMMC => display
 .else
         jsr read_frame_uncompressed
 .endif
@@ -354,15 +349,20 @@ stream_frame_compressed:
         ldy AREAD_DATA_REG              ; <run length>
         sty tmpy
 
-        ; Ignore handshake for speed; fixed delay of 16 cycles needed @ 8MHz
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
-        nop
+        ; Ignore handshake for speed
+        ; AVR needs delay of 16 cycles @ 8MHz
+        ; PIC needs delay of 18 cycles @ 4MHz
+        ;                    AVR  PIC
+        bit atommc3_type   ; (4)  (4)
+        bpl @avr           ; (3)  (2)
+        sty tmpy           ;      (3)
+@avr:
+        sty tmpy           ; (3)  (3)
+        nop                ; (2)  (2)
+        nop                ; (2)  (2)
+        nop                ; (2)  (2)
+                           ;(16) (18)
+
         lda AREAD_DATA_REG              ; <value>
 
 @loop3:
