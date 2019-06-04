@@ -28,6 +28,12 @@ name_end:
            .include "atmmc2def.asm"
 
 ;=================================================================
+;== Include Atom2K18 profiling code
+;=================================================================
+
+profiling       = 1
+
+;=================================================================
 ;== VARIABLE DECLARATION
 ;=================================================================
 
@@ -155,6 +161,9 @@ lp1:
         sta GODIL_MODE_EXT
 .endif
 
+.if profiling = 1
+        jsr profiling_init
+.endif
 
         lda ViaT1CounterH
         sta last_vsync_time
@@ -164,10 +173,18 @@ lp1:
 
 next_frame:
 
+.if profiling = 1
+        jsr profiling_clear
+.endif
+
 .if compressed = 1
         jsr read_frame_compressed
 .else
         jsr read_frame_uncompressed
+.endif
+
+.if profiling = 1
+        jsr profiling_sample
 .endif
 
         jsr adaptive_vsync              ; cap rate to 30 FPS
@@ -215,6 +232,10 @@ end_file:
 
         lda #12
         jsr OSWRCH
+
+.if profiling = 1
+        jsr profiling_dump
+.endif
 
         ldx #0
 vsync_stats_loop:
@@ -559,8 +580,10 @@ myfilename:     .byte "MOVIE"
 
 framecounter:   .byte 0,0
 
+.if profiling = 1
+        .include "profiling.asm"
+.endif
+
         .include "util.asm"
-
-
 
 end_asm:
